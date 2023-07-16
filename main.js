@@ -1,6 +1,12 @@
 let scene, camera, renderer;
-let sphere1, sphere2, light, ambientLight, lightning;
+let sphere1,
+  sphere2,
+  sphere3,
+  light,
+  ambientLight,
+  lightningBolts = [];
 let lightningTimer = 0;
+let FLASH_DURATION = 3; // duration of the flash effect (in frames)
 
 function init() {
   scene = new THREE.Scene();
@@ -24,12 +30,19 @@ function init() {
   sphere1 = new THREE.Mesh(geometry1, material1);
   scene.add(sphere1);
 
-  // Create the rolling sphere
+  // Create the first rolling sphere
   let geometry2 = new THREE.SphereGeometry(0.5, 32, 32);
   let material2 = new THREE.MeshPhongMaterial({ color: 0xff0000 });
   sphere2 = new THREE.Mesh(geometry2, material2);
   sphere2.position.x = 2;
   scene.add(sphere2);
+
+  // Create the second rolling sphere
+  let geometry3 = new THREE.SphereGeometry(0.25, 32, 32);
+  let material3 = new THREE.MeshPhongMaterial({ color: 0x00ff00 });
+  sphere3 = new THREE.Mesh(geometry3, material3);
+  sphere3.position.x = -2;
+  scene.add(sphere3);
 
   // Add an ambient light
   ambientLight = new THREE.AmbientLight(0x404040);
@@ -40,31 +53,29 @@ function init() {
   light.position.set(0, 0, 2);
   scene.add(light);
 
-  // Add a "lightning" strike
-  let lightningPoints = [];
-  lightningPoints.push(new THREE.Vector3(-1, 3, 0));
-  lightningPoints.push(new THREE.Vector3(1, -3, 0));
-  let lightningGeometry = new THREE.BufferGeometry().setFromPoints(
-    lightningPoints
-  );
-  let lightningMaterial = new THREE.LineBasicMaterial({
-    color: 0xffffff,
-    linewidth: 2,
-  });
-  lightning = new THREE.Line(lightningGeometry, lightningMaterial);
-  lightning.visible = false; // initially invisible
-  scene.add(lightning);
+  // Add resize event listener
+  window.addEventListener("resize", onWindowResize, false);
 
   animate();
+}
+
+function onWindowResize() {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
 }
 
 function animate() {
   requestAnimationFrame(animate);
 
-  // Make sphere2 orbit around sphere1 in 3D
+  // Make sphere2 and sphere3 orbit around sphere1 in 3D
   sphere2.position.x = Math.sin(Date.now() * 0.001) * 2;
   sphere2.position.y = Math.cos(Date.now() * 0.001) * 2;
   sphere2.position.z = Math.sin(Date.now() * 0.001) * 2;
+
+  sphere3.position.x = Math.sin(Date.now() * 0.001 + Math.PI) * 2; // offset by PI to orbit on the opposite side
+  sphere3.position.y = Math.cos(Date.now() * 0.001 + Math.PI) * 2;
+  sphere3.position.z = Math.sin(Date.now() * 0.001 + Math.PI) * 2;
 
   // rotate the camera around the origin
   camera.position.x = Math.cos(Date.now() * 0.0005) * 5;
@@ -74,21 +85,52 @@ function animate() {
   // Lightning effect
   if (lightningTimer > 0) {
     lightningTimer -= 1;
+    if (lightningTimer < FLASH_DURATION) {
+      // decrease intensity of the flash as time passes
+      renderer.setClearColor(0x000000, 1 - lightningTimer / FLASH_DURATION);
+      ambientLight.intensity = 0.8 * (lightningTimer / FLASH_DURATION);
+    }
   } else if (Math.random() < 0.01) {
     // 1% chance per frame
     // randomly place the lightning in the scene
-    lightning.position.set(
+    let lightningPosition = new THREE.Vector3(
       (Math.random() - 0.5) * 10,
       (Math.random() - 0.5) * 10,
       (Math.random() - 0.5) * 10
     );
-    light.position.copy(lightning.position);
-    lightning.visible = true;
+    light.position.copy(lightningPosition);
     light.visible = true;
-    lightningTimer = 10;
+    lightningTimer = 20;
+    // create a bunch of lightning bolts
+    for (let i = 0; i < 10; i++) {
+      let boltStart = lightningPosition;
+      let boltEnd = new THREE.Vector3(
+        boltStart.x + (Math.random() - 0.5) * 2,
+        boltStart.y + (Math.random() - 0.5) * 2,
+        boltStart.z + (Math.random() - 0.5) * 2
+      );
+      let lightningGeometry = new THREE.BufferGeometry().setFromPoints([
+        boltStart,
+        boltEnd,
+      ]);
+      let lightningMaterial = new THREE.LineBasicMaterial({
+        color: 0xffffff,
+        linewidth: 2,
+      });
+      let bolt = new THREE.Line(lightningGeometry, lightningMaterial);
+      lightningBolts.push(bolt);
+      scene.add(bolt);
+    }
+    // create a flash effect
+    renderer.setClearColor(0xffffff, 1);
+    ambientLight.intensity = 2;
   } else {
-    lightning.visible = false;
     light.visible = false;
+    // remove the old lightning bolts
+    for (let bolt of lightningBolts) {
+      scene.remove(bolt);
+    }
+    lightningBolts = [];
   }
 
   renderer.render(scene, camera);
